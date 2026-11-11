@@ -18,9 +18,67 @@ const hookClick = (e) => {
     }
 }
 
+const rawOpen = window.open
 window.open = function (url, target, features) {
     console.log('open', url, target, features)
     location.href = url
 }
 
 document.addEventListener('click', hookClick, { capture: true })
+
+// ---------------- 精简高配仿真：甘肃政法大学兰州新区校区北门 WGS84 ----------------
+const BASE_LAT = 36.535944;
+const BASE_LNG = 103.736890;
+const ALT = 1920;
+
+function randomRange(min, max) {
+    return Math.random() * (max - min) + min;
+}
+function jitterCoord(lat, lng, meter = 0.7) {
+    const latDelta = meter / 111000;
+    const lngDelta = meter / (111000 * Math.cos(lat * Math.PI / 180));
+    return {
+        lat: lat + randomRange(-latDelta, latDelta),
+        lng: lng + randomRange(-lngDelta, lngDelta)
+    }
+}
+function makeGeoPosition(isWatch = false) {
+    const pos = jitterCoord(BASE_LAT, BASE_LNG, isWatch ? 1.5 : 0.7);
+    const acc = randomRange(6, 28);
+    const hasAlt = Math.random() > 0.35;
+    let heading = Math.random() > 0.2 ? randomRange(0, 360) : null;
+    let speed = heading !== null ? randomRange(0, 1.8) : null;
+    return {
+        coords: {
+            latitude: pos.lat,
+            longitude: pos.lng,
+            accuracy: acc,
+            altitude: hasAlt ? ALT + randomRange(-6, 6) : null,
+            altitudeAccuracy: hasAlt ? randomRange(8, 25) : null,
+            heading: heading,
+            speed: speed
+        },
+        timestamp: Date.now()
+    }
+}
+
+Object.defineProperty(navigator, 'geolocation', {
+    value: {
+        getCurrentPosition: function (success, error, options) {
+            options = options || {};
+            const timeout = options.timeout ?? Infinity;
+            if (Math.random() < 0.12) {
+                setTimeout(() => error?.({code:3,message:"Position retrieval timed out."}), randomRange(timeout * 0.25, timeout));
+                return;
+            }
+            setTimeout(() => success(makeGeoPosition(false)), randomRange(40, 220));
+        },
+        watchPosition: function (success) {
+            const timer = setInterval(() => success(makeGeoPosition(true)), randomRange(1200, 3500));
+            return timer;
+        },
+        clearWatch: function (id) { clearInterval(id); }
+    },
+    writable: false,
+    configurable: false
+})
